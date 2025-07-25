@@ -64,7 +64,7 @@ public class TradeEventConsumer extends BaseKafkaConsumer<Trade> {
         props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, Trade.class.getName());
 
         // For real-time events, 'latest' is often preferred to start consuming new messages.
-        props.put("auto.offset.reset", "latest");
+        props.put("auto.offset.reset", "earliest");
         // For critical data like trades, it's safer to disable auto-commit and commit manually after processing.
         props.put("enable.auto.commit", "false"); // Safer for transactional processing
         return props;

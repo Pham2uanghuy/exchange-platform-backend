@@ -58,7 +58,7 @@ public class OrderStatusUpdateConsumer extends BaseKafkaConsumer<Order> {
         props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, Order.class.getName());
 
         // For real-time events, 'latest' is often preferred to start consuming new messages.
-        props.put("auto.offset.reset", "latest");
+        props.put("auto.offset.reset", "earliest");
         // For real-time processing, auto-commit can be enabled or manually managed.
         // It's often recommended to disable auto-commit and commit manually after processing.
         props.put("enable.auto.commit", "false"); // Setting to false for more control over commit
