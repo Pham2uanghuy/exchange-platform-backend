@@ -4,11 +4,14 @@ import io.github.cdimascio.dotenv.Dotenv;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.io.File;
 
 @SpringBootApplication
-@EntityScan(basePackages = {"treiding.hpq.basedomain.entity"})
+@EntityScan(basePackages = {"treiding.hpq.basedomain.entity",
+		"treiding.hpq.orderservice.outbox",})
+@EnableScheduling
 public class OrderServiceApplication {
 
 	public static void main(String[] args) {

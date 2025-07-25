@@ -1,5 +1,7 @@
 package treiding.hpq.orderservice.service.impl;
 
+import jakarta.annotation.PostConstruct;
+import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -7,7 +9,9 @@ import treiding.hpq.basedomain.entity.Order;
 import treiding.hpq.basedomain.entity.OrderStatus;
 import treiding.hpq.orderservice.kafka.OrderCommandProducer;
 import treiding.hpq.orderservice.kafka.OrderInitialLoadProducer;
+import treiding.hpq.orderservice.outbox.OutboxEvent;
 import treiding.hpq.orderservice.repository.OrderRepository;
+import treiding.hpq.orderservice.repository.OutboxEventRepository;
 import treiding.hpq.orderservice.service.api.OrderService;
 
 import java.math.BigDecimal;
@@ -23,6 +27,7 @@ public class OrderServiceIpml implements OrderService {
     private static final Logger log = LoggerFactory.getLogger(OrderServiceIpml.class);
 
     private final OrderRepository orderRepository;
+    private final OutboxEventRepository outboxEventRepository;
     private final OrderInitialLoadProducer orderInitialLoadProducer; // NEW FIELD: Producer for initial load
 
     // You'll also need a producer for real-time order events (new orders, cancellations, etc.)
@@ -30,13 +35,17 @@ public class OrderServiceIpml implements OrderService {
     private final OrderCommandProducer orderCommandProducer; // NEW FIELD: Producer for real-time commands/events
 
     // Constructor now takes the new Kafka Producers
-    public OrderServiceIpml(OrderRepository orderRepository,
+    public OrderServiceIpml(OrderRepository orderRepository, OutboxEventRepository outboxEventRepository,
                             OrderInitialLoadProducer orderInitialLoadProducer, // Inject new producer
                             OrderCommandProducer orderCommandProducer) {       // Inject new producer
         this.orderRepository = orderRepository;
+        this.outboxEventRepository = outboxEventRepository;
         this.orderInitialLoadProducer = orderInitialLoadProducer;
         this.orderCommandProducer = orderCommandProducer;
+    }
 
+    @PostConstruct
+    public void init() {
         publishAllOpenOrdersToKafka();
     }
 
@@ -47,6 +56,7 @@ public class OrderServiceIpml implements OrderService {
      * @return The initial saved order object. Its final state will be updated via listeners.
      */
     @Override
+    @Transactional
     public Order createOrder (Order order) {
         // Generate UUID for the order and set initial status
         order.setOrderId(UUID.randomUUID().toString());
@@ -55,13 +65,14 @@ public class OrderServiceIpml implements OrderService {
         order.setFilledQuantity(BigDecimal.valueOf(0.0));
         order.setStatus(OrderStatus.OPEN);
 
+        // save to db
         Order savedOrder = orderRepository.save(order);
         log.info("Saved new order to DB (initial state): {}", savedOrder.getOrderId());
 
-        // Publish the new order to the real-time order events topic
-        // This is the "order command" or "order event" that MatchingEngine listens to for new orders.
-        orderCommandProducer.sendOrderCommand(savedOrder);
-        log.info("Published new order event to Kafka for order ID: {}", savedOrder.getOrderId());
+        // create outbox
+        OutboxEvent outboxEvent = OutboxEvent.createOrderCreatedEvent(savedOrder, OrderCommandProducer.ORDER_COMMANDS_TOPIC);
+        outboxEventRepository.save(outboxEvent);
+        log.info("Recorded new order event to outbox for ID: {}. Outbox event ID: {}", savedOrder.getOrderId(), outboxEvent.getId());
 
         return savedOrder;
     }
@@ -105,6 +116,7 @@ public class OrderServiceIpml implements OrderService {
      * @param orderId The ID of the order to cancel.
      */
     @Override
+    @Transactional
     public void cancelOrder(String orderId) {
         log.info("Attempting to cancel order with ID: {}.", orderId);
         Optional<Order> orderOptional = orderRepository.findByOrderId(orderId);
@@ -117,10 +129,13 @@ public class OrderServiceIpml implements OrderService {
                 orderRepository.save(orderToCancel);
                 log.info("Order {} status updated to CANCELED in DB.", orderId);
 
-                // Publish the cancellation event to Kafka
-                // Assuming orderCommandProducer can also handle cancellation events
-                orderCommandProducer.sendOrderCommand(orderToCancel);
-                log.info("Published order cancellation event to Kafka for order ID: {}.", orderId);
+                // --- OUTBOX PATTERN IMPLEMENTATION ---
+                // Create an OutboxEvent for the 'OrderCancelled' event.
+                OutboxEvent outboxEvent = OutboxEvent.createOrderCancelledEvent(orderToCancel, OrderCommandProducer.ORDER_COMMANDS_TOPIC);
+                outboxEventRepository.save(outboxEvent);
+                log.info("Recorded order cancellation event to outbox for ID: {}. Outbox event ID: {}", orderId, outboxEvent.getId());
+                // --- END OUTBOX PATTERN ---
+
             } else {
                 log.warn("Order {} cannot be cancelled as its current status is {}.", orderId, orderToCancel.getStatus());
             }
