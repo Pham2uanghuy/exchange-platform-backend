@@ -7,7 +7,6 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.stereotype.Component;
-import treiding.hpq.basedomain.entity.Order;
 import treiding.hpq.basedomain.entity.Trade;
 import treiding.hpq.basedomain.kafka.BaseKafkaConsumer;
 import treiding.hpq.orderstatusservice.service.OrderStatusUpdateService;
@@ -19,13 +18,10 @@ import java.util.Properties;
 public class TradeEventConsumer extends BaseKafkaConsumer<Trade> {
 
     // Define the correct topic name for trade events
-    // This should match the topic defined in your TradeEventProducer
     public static final String TRADE_EVENTS_TOPIC = "trade.events"; // Correct topic name
 
     // Inject the service responsible for handling trade events
     private final OrderStatusUpdateService orderStatusUpdateService;
-    // Alternatively, if you have a dedicated TradeService:
-    // private final TradeService tradeService;
 
 
     /**
@@ -90,8 +86,6 @@ public class TradeEventConsumer extends BaseKafkaConsumer<Trade> {
     @PostConstruct
     public void startListening() {
         log.info("Starting TradeEventConsumer for topic: {}", TRADE_EVENTS_TOPIC);
-        // Pass the correct topic name and the method reference to the service's handler for trades
         startConsuming(TRADE_EVENTS_TOPIC, orderStatusUpdateService::handleTradeEvent);
-        // If you had a dedicated TradeService: tradeService.startConsuming(TRADE_EVENTS_TOPIC, tradeService::handleTradeEvent);
     }
 }

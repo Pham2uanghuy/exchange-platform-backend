@@ -4,6 +4,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import treiding.hpq.basedomain.entity.Order;
+import treiding.hpq.basedomain.exception.OrderCancellationException;
+import treiding.hpq.basedomain.exception.OrderNotFoundException;
 import treiding.hpq.orderservice.service.api.OrderService;
 
 @RestController
@@ -26,4 +28,16 @@ public class OrderAPIController {
         Order savedOrder = orderService.createOrder(order);
         return new ResponseEntity<>(savedOrder, HttpStatus.CREATED);
     }
+
+    /**
+     * Endpoint to cancel an existing order by its ID.
+     * @param orderId The unique identifier of the order to cancel.
+     * @return A ResponseEntity indicating the success or failure of the cancellation.
+     */
+    @DeleteMapping("/{orderId}")
+    public ResponseEntity<Void> cancelOrder(@PathVariable String orderId) {
+        orderService.cancelOrder(orderId);
+        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+    }
+
 }

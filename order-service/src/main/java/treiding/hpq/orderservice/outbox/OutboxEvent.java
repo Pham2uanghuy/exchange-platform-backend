@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.persistence.*;
 import treiding.hpq.basedomain.entity.Order;
+import treiding.hpq.basedomain.kafkaevent.OrderCommandEvent;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -111,7 +112,8 @@ public class OutboxEvent {
         event.setEventType("OrderCreated");
         event.setTopic(topic);
         try {
-            event.setPayload(objectMapper.writeValueAsString(order));
+            OrderCommandEvent msg = new OrderCommandEvent("OrderCreated", order);
+            event.setPayload(objectMapper.writeValueAsString(msg));
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Error converting Order to JSON for OutboxEvent", e);
         }
@@ -132,7 +134,8 @@ public class OutboxEvent {
         event.setEventType("OrderCancelled");
         event.setTopic(topic);
         try {
-            event.setPayload(objectMapper.writeValueAsString(order));
+            OrderCommandEvent msg = new OrderCommandEvent("OrderCancelled", order);
+            event.setPayload(objectMapper.writeValueAsString(msg));
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Error converting Order to JSON for OutboxEvent", e);
         }

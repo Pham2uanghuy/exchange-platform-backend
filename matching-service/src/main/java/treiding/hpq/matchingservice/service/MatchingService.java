@@ -7,14 +7,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import treiding.hpq.basedomain.entity.Order;
 import treiding.hpq.basedomain.entity.OrderStatus;
+import treiding.hpq.basedomain.kafkaevent.OrderCommandEvent;
 import treiding.hpq.matchingservice.entity.OrderBook;
-import treiding.hpq.matchingservice.kafka.OrderCommandConsumer;
-import treiding.hpq.matchingservice.kafka.OrderInitialLoadConsumer;
-import treiding.hpq.matchingservice.kafka.OrderStatusUpdateProducer;
-import treiding.hpq.matchingservice.kafka.TradeEventProducer;
+import treiding.hpq.matchingservice.kafka.*;
 
-
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -36,9 +35,12 @@ public class MatchingService {
 
 
     public MatchingService(OrderInitialLoadConsumer orderInitialLoadConsumer,
-                           OrderCommandConsumer orderCommandConsumer,OrderStatusUpdateProducer orderStatusUpdateProducer, TradeEventProducer tradeProducer) {
+                           OrderCommandConsumer orderCommandConsumer,
+                           OrderMatchedEventProducer orderMatchedEventProducer,
+                           TradeEventProducer tradeProducer,
+                           OrderCancellationProducer orderCancellationProducer) {
         this.orderBook = new OrderBook();
-        this.matchingEngine = new MatchingEngine(this.orderBook, orderStatusUpdateProducer, tradeProducer);
+        this.matchingEngine = new MatchingEngine(this.orderBook, orderMatchedEventProducer, tradeProducer, orderCancellationProducer);
         this.orderInitialLoadConsumer = orderInitialLoadConsumer;
         this.orderCommandConsumer = orderCommandConsumer; // Initialize the real-time consumer
 
@@ -73,7 +75,7 @@ public class MatchingService {
     public void shutdown() {
         log.info("[MatchingService] Initiating graceful shutdown of Kafka listeners.");
         // Stop the real-time consumer first if it has a stop method
-        orderCommandConsumer.stopConsuming(); // Assuming this method exists in BaseKafkaConsumer/orderCommandConsumer
+        orderCommandConsumer.stopConsuming();
 
         // Shutdown the executor that runs the Kafka listeners
         kafkaListenerExecutor.shutdown();
@@ -87,6 +89,9 @@ public class MatchingService {
             log.error("[MatchingService] Shutdown of Kafka listener executor interrupted.");
         }
         log.info("[MatchingService] Kafka listener shutdown complete.");
+        log.info("[MatchingService] Shutting down MatchingEngine gracefully...");
+        this.matchingEngine.shutdown();
+        log.info("[MatchingService] MatchingEngine shutdown initiated.");
     }
 
     /**
@@ -130,9 +135,6 @@ public class MatchingService {
     private void startKafkaListeners() {
         log.info("[MatchingService] Starting real-time Kafka listeners for order events.");
 
-        // The second parameter is a functional interface (Consumer<Order>) that defines
-        // how each incoming order event should be processed.
-        // This makes the BaseKafkaConsumer reusable and flexible.
         orderCommandConsumer.startConsuming("order.events", this::handleNewOrUpdatedOrderEvent);
 
         // You might have other consumers here, e.g., for cancellation requests
@@ -142,35 +144,32 @@ public class MatchingService {
     /**
      * Processes a new or updated order event received from real-time Kafka stream.
      * This method decides whether the order needs to be added to the matching queue.
-     * @param eventOrder The order object received from Kafka.
+     * @param eventMessage The order object received from Kafka.
      */
-    private void handleNewOrUpdatedOrderEvent(Order eventOrder) {
-        log.info("[MatchingService] Received real-time order event from Kafka: {}", eventOrder.getOrderId());
+    private void handleNewOrUpdatedOrderEvent(OrderCommandEvent eventMessage) {
+        Order eventOrder = eventMessage.getOrder(); // Lấy đối tượng Order từ message
+        String eventType = eventMessage.getEventType(); // Lấy loại sự kiện
 
-        // Only orders with an 'OPEN' status are considered new orders
-        // that need to be enqueued for active matching.
-        // Orders with other statuses (e.g., FILLED, PARTIALLY_FILLED, CANCELED)
-        // are typically updates originating from the MatchingEngine itself (which it already knows about)
-        // or from Order Service (e.g., direct cancellation) which primarily
-        // affect the Order Service's database, but might need to affect the engine's internal map.
-        if (eventOrder.getStatus() == OrderStatus.OPEN) {
-            // This is a new order placed by a user, which the Order Service has saved
-            // and then published to Kafka. Now, it needs to be processed by the engine.
+        log.info("[MatchingService] Received real-time event from Kafka: EventType={}, OrderId={}",
+                eventType, eventOrder.getOrderId());
+
+        if ("OrderCreated".equals(eventType) || ("OrderUpdated".equals(eventType) && eventOrder.getStatus() == OrderStatus.OPEN)) {
+            // Xử lý tạo mới hoặc cập nhật trạng thái OPEN
             matchingEngine.addToOrderQueue(eventOrder);
-            log.info("[MatchingService] Enqueued NEW order {} for matching.", eventOrder.getOrderId());
-        } else if (eventOrder.getStatus() == OrderStatus.CANCELED) {
-            // Handle cancellations. If an order is cancelled by the user via Order Service,
-            // Order Service publishes a CANCELLED event. Matching Engine needs to remove it.
-            matchingEngine.cancelOrder(eventOrder.getOrderId()); // You'll need to add this method to MatchingEngine
+            log.info("[MatchingService] Enqueued new order {} for matching.", eventOrder.getOrderId());
+        } else if ("OrderCancelled".equals(eventType)) {
+            // Xử lý hủy đơn hàng
             log.info("[MatchingService] Received cancellation for order {}. Attempting to remove from book.", eventOrder.getOrderId());
+            Order ordertoCancel = matchingEngine.getOpenOrderById(eventOrder.getOrderId());
+            if (ordertoCancel != null) {
+                matchingEngine.cancelOrder(eventOrder.getOrderId());
+                log.info("[MatchingService] Order {} successfully cancelled in OrderBook.", eventOrder.getOrderId());
+            } else {
+                log.info("[MatchingService] Order {} not found as OPEN in OrderBook. No action needed for cancellation.", eventOrder.getOrderId());
+            }
         } else {
-            // For PARTIALLY_FILLED or FILLED events, these are usually updates *from* the MatchingEngine itself
-            // to the Order Service. If the Order Service is also publishing them back,
-            // you might want to update the internal state in `allOpenOrders` map,
-            // but not add to the queue for matching.
-            log.debug("[MatchingService] Order {} has status {}. Not enqueuing for matching (likely an internal update or already processed).",
-                    eventOrder.getOrderId(), eventOrder.getStatus());
-            // Optionally: matchingEngine.updateOrderInternalState(eventOrder); if there's a need to update specific fields
+            log.debug("[MatchingService] EventType={} for order {} has status {}. Not enqueuing or cancelling (likely internal or already processed).",
+                    eventType, eventOrder.getOrderId(), eventOrder.getStatus());
         }
     }
 
