@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import treiding.hpq.basedomain.entity.Order;
+import treiding.hpq.basedomain.kafkaevent.OrderCommandEvent;
 import treiding.hpq.orderservice.outbox.OutboxEvent;
 import treiding.hpq.orderservice.outbox.OutboxStatus;
 import treiding.hpq.orderservice.repository.OutboxEventRepository;
@@ -133,7 +134,7 @@ public class OutboxRelayer {
         switch (event.getEventType()) {
             case "OrderCreated":
             case "OrderCancelled":
-                return objectMapper.readValue(event.getPayload(), Order.class);
+                return objectMapper.readValue(event.getPayload(), OrderCommandEvent.class);
             default:
                 log.warn("Unknown event type '{}' for event ID {}. Attempting to deserialize as generic Object.",
                         event.getEventType(), event.getId());

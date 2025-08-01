@@ -1,12 +1,15 @@
 package treiding.hpq.orderservice.service.impl;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.persistence.OptimisticLockException;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import treiding.hpq.basedomain.entity.Order;
 import treiding.hpq.basedomain.entity.OrderStatus;
+import treiding.hpq.basedomain.exception.OrderCancellationException;
+import treiding.hpq.basedomain.exception.OrderNotFoundException;
 import treiding.hpq.orderservice.kafka.OrderCommandProducer;
 import treiding.hpq.orderservice.kafka.OrderInitialLoadProducer;
 import treiding.hpq.orderservice.outbox.OutboxEvent;
@@ -19,7 +22,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 
 @Service
@@ -28,20 +30,14 @@ public class OrderServiceIpml implements OrderService {
 
     private final OrderRepository orderRepository;
     private final OutboxEventRepository outboxEventRepository;
-    private final OrderInitialLoadProducer orderInitialLoadProducer; // NEW FIELD: Producer for initial load
-
-    // You'll also need a producer for real-time order events (new orders, cancellations, etc.)
-    // Let's call it OrderCommandProducer, as you mentioned you have one for "order commands."
-    private final OrderCommandProducer orderCommandProducer; // NEW FIELD: Producer for real-time commands/events
+    private final OrderInitialLoadProducer orderInitialLoadProducer;
 
     // Constructor now takes the new Kafka Producers
     public OrderServiceIpml(OrderRepository orderRepository, OutboxEventRepository outboxEventRepository,
-                            OrderInitialLoadProducer orderInitialLoadProducer, // Inject new producer
-                            OrderCommandProducer orderCommandProducer) {       // Inject new producer
+                            OrderInitialLoadProducer orderInitialLoadProducer) {       // Inject new producer
         this.orderRepository = orderRepository;
         this.outboxEventRepository = outboxEventRepository;
         this.orderInitialLoadProducer = orderInitialLoadProducer;
-        this.orderCommandProducer = orderCommandProducer;
     }
 
     @PostConstruct
@@ -111,37 +107,57 @@ public class OrderServiceIpml implements OrderService {
     }
 
     /**
-     * Cancels an existing order by its ID.
-     * Updates the order status in the DB and publishes a cancellation event to Kafka.
-     * @param orderId The ID of the order to cancel.
+     * Cancels an existing order identified by its ID.
+     * This method is designed to handle concurrent modifications (e.g., matching events)
+     * using Optimistic Locking to ensure data consistency and prioritize matched orders.
+     *
+     * @param orderId The unique identifier of the order to cancel.
+     * @throws OrderNotFoundException if the specified order does not exist.
+     * @throws OrderCancellationException if the order cannot be canceled due to its current state
+     * (e.g., already matched, already canceled, or other invalid states).
      */
     @Override
     @Transactional
     public void cancelOrder(String orderId) {
         log.info("Attempting to cancel order with ID: {}.", orderId);
-        Optional<Order> orderOptional = orderRepository.findByOrderId(orderId);
+        // Retrieve the order from the database
+        Order orderToCancel = orderRepository.findByOrderId(orderId)
+                .orElseThrow(() -> {
+                    log.warn("Order {} not found for cancellation.", orderId);
+                    // Throw custom exception for API layer to map to HTTP 404 Not Found.
+                    return new OrderNotFoundException("Order with ID " + orderId + " not found.");
+                });
 
-        if (orderOptional.isPresent()) {
-            Order orderToCancel = orderOptional.get();
-            if (orderToCancel.getStatus() == OrderStatus.OPEN || orderToCancel.getStatus() == OrderStatus.PARTIALLY_FILLED) {
-                orderToCancel.setStatus(OrderStatus.CANCELED);
-                orderToCancel.setTimestamp(Instant.now()); // Update timestamp to reflect cancellation time
-                orderRepository.save(orderToCancel);
-                log.info("Order {} status updated to CANCELED in DB.", orderId);
+        OrderStatus currentStatus = orderToCancel.getStatus();
 
-                // --- OUTBOX PATTERN IMPLEMENTATION ---
-                // Create an OutboxEvent for the 'OrderCancelled' event.
-                OutboxEvent outboxEvent = OutboxEvent.createOrderCancelledEvent(orderToCancel, OrderCommandProducer.ORDER_COMMANDS_TOPIC);
-                outboxEventRepository.save(outboxEvent);
-                log.info("Recorded order cancellation event to outbox for ID: {}. Outbox event ID: {}", orderId, outboxEvent.getId());
-                // --- END OUTBOX PATTERN ---
+        // Evaluate the current status of the order for cancellation eligibility.
+        if (currentStatus == OrderStatus.OPEN || currentStatus == OrderStatus.PARTIALLY_FILLED) {
+            // Order is OPEN or PARTIALLY_FILLED. It is eligible for cancellation.
+            // Record 'Order Cancelled' event in the Outbox. This event will be sent to Kafka
+            // Matching Service  receive the msg then remove the order from its order book.
+            OutboxEvent outboxEventForMatching = OutboxEvent.createOrderCancelledEvent(orderToCancel, OrderCommandProducer.ORDER_COMMANDS_TOPIC);
+            outboxEventRepository.save(outboxEventForMatching);
+            log.info("Recorded order cancellation event to outbox for ID: {}. Outbox event ID: {}", orderId, outboxEventForMatching.getId());
 
-            } else {
-                log.warn("Order {} cannot be cancelled as its current status is {}.", orderId, orderToCancel.getStatus());
-            }
+        } else if (currentStatus == OrderStatus.FILLED) {
+            // Order is FULLY MATCHED. It cannot be canceled.
+            log.warn("Order {} cannot be cancelled: It is already FULLY MATCHED.", orderId);
+            // Throw custom exception for API layer to map to HTTP 409 Conflict.
+            throw new OrderCancellationException("Order " + orderId + " has been fully matched and cannot be canceled.");
+
+        } else if (currentStatus == OrderStatus.CANCELED) {
+            // Order is already CANCELED. No action needed.
+            log.warn("Order {} cannot be cancelled: It is already CANCELED.", orderId);
+            // Throw custom exception for API layer to map to HTTP 400 Bad Request.
+            throw new OrderCancellationException("Order " + orderId + " is already canceled.");
+
         } else {
-            log.warn("Order {} not found for cancellation.", orderId);
+            // Other statuses that do not allow cancellation (e.g., EXPIRED, REJECTED).
+            log.warn("Order {} cannot be cancelled: Its current status ({}) does not allow cancellation.", orderId, currentStatus);
+            // Throw custom exception for API layer to map to HTTP 400 Bad Request.
+            throw new OrderCancellationException("Order " + orderId + " cannot be canceled in its current state (" + currentStatus + ").");
         }
+
     }
 
     /**
@@ -153,13 +169,10 @@ public class OrderServiceIpml implements OrderService {
     @Override
     public void deleteOrder(String orderId) {
         log.info("Attempting to delete order with ID: {}.", orderId);
-        // Before deleting, you might want to check if it's safe to delete (e.g., already filled/canceled)
         Optional<Order> orderOptional = orderRepository.findByOrderId(orderId);
         if (orderOptional.isPresent()) {
             orderRepository.delete(orderOptional.get());
             log.info("Order {} deleted from DB.", orderId);
-            // Optional: Publish a "OrderDeleted" event if other services need to know
-            // orderCommandProducer.sendOrderDeletedEvent(orderId);
         } else {
             log.warn("Order {} not found for deletion.", orderId);
         }

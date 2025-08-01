@@ -86,6 +86,14 @@ public class Order {
     private Instant timestamp;
 
     /**
+     * Version field for optimistic locking.
+     * JPA automatically manages this field.
+     */
+    @Version
+    @Column(name = "version")
+    private Integer version;
+
+    /**
      * Applies a fill (partial or full) to this order and updates its status.
      *
      * @param fillAmount the quantity that has been filled
@@ -218,5 +226,13 @@ public class Order {
 
     public void setOrderId(String orderId) {
         this.orderId = orderId;
+    }
+
+    public Integer getVersion() {
+        return version;
+    }
+
+    public void setVersion(Integer version) {
+        this.version = version;
     }
 }
