@@ -8,6 +8,7 @@
         <outputRelativeToContentRoot value="true" />
         <module name="base-domain" />
         <module name="order-status-service" />
+        <module name="market-data-service" />
         <module name="order-service" />
         <module name="matching-service" />
       </profile>
@@ -16,6 +17,7 @@
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
       <module name="base-domain" options="-parameters" />
+      <module name="market-data-service" options="-parameters" />
       <module name="matching-service" options="-parameters" />
       <module name="order-service" options="-parameters" />
       <module name="order-status-service" options="-parameters" />
