@@ -25,12 +25,18 @@ public class WalletManagerService {
                 .collect(Collectors.toList());
     }
 
+    public BigDecimal getAvailableBalance(String userId, String currency) {
+        return walletRepository.findByUserIdAndCurrency(userId, currency)
+                .map(Wallet::getAvailableBalance)
+                .orElse(BigDecimal.ZERO); // return 0 if wallet not found
+    }
+
     @Transactional
     public void createInitialWallets(String userId) {
-        if (walletRepository.findByUserIdAndCurrency(userId, "USDT").isEmpty()) {
+        if (walletRepository.findByUserIdAndCurrency(userId, "USD").isEmpty()) {
             Wallet usdtWallet = new Wallet();
             usdtWallet.setUserId(userId);
-            usdtWallet.setCurrency("USDT");
+            usdtWallet.setCurrency("USD");
             usdtWallet.setBalance(new BigDecimal("10000.00")); // Initial balance for demo
             usdtWallet.setAvailableBalance(new BigDecimal("10000.00"));
             walletRepository.save(usdtWallet);

@@ -44,8 +44,9 @@ public class TradeEventProcessor {
         String buyerId = event.getBuyerId();
         String sellerId = event.getSellerId();
         String instrumentId = event.getInstrumentId();
-        String baseCurrency = instrumentId.substring(0, 3);
-        String quoteCurrency = instrumentId.substring(3);
+        String[] currencies = instrumentId.split("/");
+        String baseCurrency = currencies[0];
+        String quoteCurrency = currencies[1];
         BigDecimal tradePrice = event.getTradedPrice();
         BigDecimal tradeQuantity = event.getTradedQuantity();
         BigDecimal tradeAmount = tradePrice.multiply(tradeQuantity);

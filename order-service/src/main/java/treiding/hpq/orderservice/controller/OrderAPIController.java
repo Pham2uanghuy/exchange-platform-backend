@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import treiding.hpq.basedomain.entity.Order;
 import treiding.hpq.basedomain.exception.OrderCancellationException;
 import treiding.hpq.basedomain.exception.OrderNotFoundException;
+import treiding.hpq.orderservice.exception.InsufficientFundsException;
 import treiding.hpq.orderservice.service.api.OrderService;
 
 @RestController
@@ -25,8 +26,16 @@ public class OrderAPIController {
      */
     @PostMapping
     public ResponseEntity<Order> placeOrder(@RequestBody Order order) {
-        Order savedOrder = orderService.createOrder(order);
-        return new ResponseEntity<>(savedOrder, HttpStatus.CREATED);
+//        Order savedOrder = orderService.createOrder(order);
+//        return new ResponseEntity<>(savedOrder, HttpStatus.CREATED);
+        try {
+            Order savedOrder = orderService.createOrder(order);
+            return new ResponseEntity<>(savedOrder, HttpStatus.CREATED);
+        } catch (InsufficientFundsException e) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        } catch (Exception e) {
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
     /**
