@@ -306,12 +306,16 @@ public class MatchingEngine {
     private Trade createTrade(Order aggressorOrder, Order restingOrder, BigDecimal tradePrice, BigDecimal tradeQuantity, OrderSide aggressorSide) {
         String buyerOrderId = (aggressorSide == OrderSide.BUY) ? aggressorOrder.getOrderId() : restingOrder.getOrderId();
         String sellerOrderId = (aggressorSide == OrderSide.BUY) ? restingOrder.getOrderId() : aggressorOrder.getOrderId();
+        String buyerId = (aggressorSide == OrderSide.BUY) ? aggressorOrder.getUserId() : restingOrder.getUserId();
+        String sellerId = (aggressorSide == OrderSide.BUY) ? restingOrder.getUserId() : aggressorOrder.getUserId();
         String instrumentId = aggressorOrder.getInstrumentId(); // Both orders must be for the same instrument
 
         return new Trade(
                 UUID.randomUUID().toString(), // Generate a unique Trade ID
                 buyerOrderId,
+                buyerId,
                 sellerOrderId,
+                sellerId,
                 instrumentId,
                 tradePrice,
                 tradeQuantity,
