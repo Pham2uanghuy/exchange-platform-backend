@@ -325,6 +325,8 @@ public class MatchingEngine {
      * @param newOrder The new order to process.
      */
     public void addToOrderQueue(Order newOrder) {
+        // kafka msg may be duplicated, so check if newOrder's already in Queue or in OrderBook
+        if (!allOpenOrders.containsKey(newOrder.getOrderId())) {
             // Add the order to the queue. The matching thread will pick it up sequentially.
             incomingOrderQueue.offer(newOrder);
             // Add to allOpenOrders map immediately, so other internal methods (like cancelOrder)
@@ -332,6 +334,10 @@ public class MatchingEngine {
             allOpenOrders.put(newOrder.getOrderId(), newOrder);
             log.info("[MatchingEngine] Enqueued new order: {} (Side: {}, Qty: {}, Price: {})",
                     newOrder.getOrderId(), newOrder.getSide(), newOrder.getOriginalQuantity(), newOrder.getPrice());
+        } else {
+            log.info("[MatchingEngine] Order has orderId: {} already added, do nothing", newOrder.getOrderId());
+            return;
+        }
 
     }
 
@@ -342,6 +348,8 @@ public class MatchingEngine {
      * @param order The order to add. Must have positive remaining quantity and be OPEN or PARTIALLY_FILLED.
      */
     public void addRestingOrder(Order order) {
+        // Kafka msg may be duplicated, check if it's already added
+        if (!allOpenOrders.containsKey(order.getOrderId())) {
             if (order.getRemainingQuantity().compareTo(BigDecimal.ZERO) <= 0 ||
                     (order.getStatus() != OrderStatus.OPEN && order.getStatus() != OrderStatus.PARTIALLY_FILLED)) {
                 log.warn("[MatchingEngine] Attempted to add invalid resting order: {} (Qty: {}, Status: {}). Skipping.",
@@ -352,7 +360,10 @@ public class MatchingEngine {
             allOpenOrders.put(order.getOrderId(), order);
             log.info("[MatchingEngine] Added resting order: {} {} {}@{}",
                     order.getOrderId(), order.getSide(), order.getRemainingQuantity(), order.getPrice());
-
+        } else {
+            log.info("[MatchingEngine] Order has OrderId: {} already added, do nothing", order.getOrderId());
+            return;
+        }
 
     }
 
