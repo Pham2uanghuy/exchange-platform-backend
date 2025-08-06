@@ -6,7 +6,6 @@ import org.springframework.stereotype.Component;
 import treiding.hpq.basedomain.entity.Trade;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -85,28 +84,8 @@ public class MarketDataStore {
      * It would either:
      * A) Call an API on the Matching Engine to get a snapshot.
      * B) Listen to dedicated "Order Book Snapshot/Delta" Kafka topics from the Matching Engine.
-     * For a simple demo, this might return dummy data or indicate no data available.
      */
     public Map<String, Object> getOrderBookSnapshot(String instrumentId) {
-        // --- IMPORTANT: This is a placeholder for your Order Book data source ---
-        // For demonstration, you might return a dummy order book or
-        // make an HTTP call to your Matching Engine's API (if you expose one).
-
-        // Example: dummy data
-        // Map<BigDecimal, BigDecimal> bids = new ConcurrentSkipListMap<>(Comparator.reverseOrder());
-        // bids.put(new BigDecimal("100.00"), new BigDecimal("50"));
-        // bids.put(new BigDecimal("99.90"), new BigDecimal("100"));
-        //
-        // Map<BigDecimal, BigDecimal> asks = new ConcurrentSkipListMap<>();
-        // asks.put(new BigDecimal("100.10"), new BigDecimal("75"));
-        // asks.put(new BigDecimal("100.20"), new BigDecimal("120"));
-        //
-        // return Map.of(
-        //     "instrumentId", instrumentId,
-        //     "bids", bids,
-        //     "asks", asks
-        // );
-
         return Collections.emptyMap(); // Return empty map if no real data source is integrated yet
     }
 }

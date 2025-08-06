@@ -34,7 +34,7 @@ public class TradeEventConsumer extends BaseKafkaConsumer<Trade> {
      * (Or TradeService if you have a dedicated one)
      */
     public TradeEventConsumer(@Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
-                              @Value("${spring.kafka.consumer.group-id.trade-events}") String groupId, // Correct group ID property
+                              @Value("${spring.kafka.consumer.group-id.trade-events}") String groupId,
                               OrderStatusUpdateService orderStatusUpdateService) {
         // Call the superclass constructor, passing the built properties and the correct topic name
         super(buildConsumerProps(bootstrapServers, groupId), TRADE_EVENTS_TOPIC);
@@ -55,13 +55,9 @@ public class TradeEventConsumer extends BaseKafkaConsumer<Trade> {
 
         // Configure JsonDeserializer for the value
         props.put("value.deserializer", JsonDeserializer.class.getName());
-        // IMPORTANT: Replace "com.yourcompany.trade" with the actual package of your Trade class!
         props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
         props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, Trade.class.getName());
-
-        // For real-time events, 'latest' is often preferred to start consuming new messages.
         props.put("auto.offset.reset", "earliest");
-        // For critical data like trades, it's safer to disable auto-commit and commit manually after processing.
         props.put("enable.auto.commit", "false"); // Safer for transactional processing
         return props;
     }
@@ -75,7 +71,6 @@ public class TradeEventConsumer extends BaseKafkaConsumer<Trade> {
      */
     @Override
     protected Consumer<String, Trade> createKafkaConsumer(Properties consumerProps, String topicName) {
-        // This method simply uses the 'consumerProps' already built to create the KafkaConsumer.
         return new KafkaConsumer<>(consumerProps);
     }
 

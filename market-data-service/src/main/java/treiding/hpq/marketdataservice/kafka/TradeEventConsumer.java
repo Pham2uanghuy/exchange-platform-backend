@@ -61,15 +61,9 @@ public class TradeEventConsumer extends BaseKafkaConsumer<Trade> {
 
         // Configure JsonDeserializer for the value (Trade object)
         props.put("value.deserializer", JsonDeserializer.class.getName());
-        props.put(JsonDeserializer.TRUSTED_PACKAGES, "*"); // Trust all packages for deserialization (use with caution in production)
-        props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, Trade.class.getName()); // Specify the exact class for deserialization
-
-        // Set auto.offset.reset to 'earliest' to ensure new consumers read from the beginning
-        // or 'latest' if you only want to process messages published after the consumer starts.
+        props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
+        props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, Trade.class.getName());
         props.put("auto.offset.reset", "earliest");
-
-        // Disable auto-commit to manually commit offsets after successful processing.
-        // This is safer for data integrity.
         props.put("enable.auto.commit", "false");
 
         return props;
@@ -95,13 +89,10 @@ public class TradeEventConsumer extends BaseKafkaConsumer<Trade> {
     @PostConstruct
     public void startListening() {
         log.info("Starting MarketDataService TradeEventConsumer for topic: {}", TRADE_EVENTS_TOPIC);
-        // Pass a lambda expression or method reference that handles the trade event.
-        // This method will be called for each Trade event consumed from Kafka.
         startConsuming(TRADE_EVENTS_TOPIC, trade -> {
+            log.info("Received trade: {}, instrumentId: {} ", trade.getTradeId(), trade.getInstrumentId());
             marketDataStore.updateMarketData(trade); // Update the in-memory store
             webSocketHandler.notifyTradeUpdate(trade); // Push update to WebSocket clients
-            // After successful processing, you might want to manually commit the offset
-            // this.kafkaConsumer.commitSync(); // If enable.auto.commit is false
         });
     }
 

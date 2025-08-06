@@ -58,9 +58,6 @@ public class MarketDataController {
     /**
      * REST API to retrieve an Order Book snapshot for a given instrument.
      * IMPORTANT: The actual Order Book data typically resides in the Matching Engine.
-     * For this demo, you would either:
-     * 1. Have the Matching Engine periodically publish full Order Book snapshots to Kafka
-     * (then MarketDataStore would maintain it).
      * 2. Call an internal REST API on the Matching Engine from here to get the snapshot.
      * 3. For simplest demo, return dummy data.
      *

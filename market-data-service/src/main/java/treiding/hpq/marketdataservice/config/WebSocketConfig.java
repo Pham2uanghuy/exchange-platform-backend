@@ -16,12 +16,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
      */
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
-        // Enables a simple in-memory broker. Messages whose destination starts with "/topic"
-        // will be routed to the message broker for broadcasting to subscribed clients.
         config.enableSimpleBroker("/topic");
-
-        // Sets the prefix for application-defined messages. Messages whose destination
-        // starts with "/app" will be routed to @MessageMapping methods in @Controller classes.
         config.setApplicationDestinationPrefixes("/app");
     }
 
@@ -31,9 +26,6 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
      */
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // Registers the "/ws" endpoint. Clients will connect to ws://localhost:8082/ws
-        // .setAllowedOriginPatterns("*") allows connections from any origin (for development).
-        // .withSockJS() provides fallback options for browsers that don't support WebSockets.
         registry.addEndpoint("/ws").setAllowedOriginPatterns("*").withSockJS();
     }
 }

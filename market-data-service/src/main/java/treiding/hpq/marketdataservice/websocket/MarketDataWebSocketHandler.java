@@ -40,7 +40,6 @@ public class MarketDataWebSocketHandler {
     /**
      * Notifies WebSocket clients about an updated last traded price.
      * Clients subscribed to `/topic/last-price/{instrumentId}` will receive this update.
-     * (You would call this from your MarketDataStore if the price is updated).
      * @param instrumentId The ID of the instrument.
      * @param lastPrice The updated last traded price.
      */
@@ -60,8 +59,6 @@ public class MarketDataWebSocketHandler {
      */
     public void notifyOrderBookUpdate(String instrumentId, Map<String, Object> orderBookData) {
         String destination = "/topic/order-book/" + instrumentId;
-        // Assuming OrderBookData can be directly put into the MarketDataUpdate.data field
-        // You might need a specific MarketDataUpdate type for Order Book.
         MarketDataUpdate update = new MarketDataUpdate(
                 UpdateType.ORDER_BOOK_UPDATE,
                 instrumentId,
