@@ -7,14 +7,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import treiding.hpq.basedomain.entity.Order;
+import treiding.hpq.basedomain.entity.OrderSide;
 import treiding.hpq.basedomain.entity.OrderStatus;
 import treiding.hpq.basedomain.exception.OrderCancellationException;
 import treiding.hpq.basedomain.exception.OrderNotFoundException;
+import treiding.hpq.orderservice.exception.InsufficientFundsException;
 import treiding.hpq.orderservice.kafka.OrderCommandProducer;
 import treiding.hpq.orderservice.kafka.OrderInitialLoadProducer;
 import treiding.hpq.orderservice.outbox.OutboxEvent;
 import treiding.hpq.orderservice.repository.OrderRepository;
 import treiding.hpq.orderservice.repository.OutboxEventRepository;
+import treiding.hpq.orderservice.service.WalletServiceClient;
 import treiding.hpq.orderservice.service.api.OrderService;
 
 import java.math.BigDecimal;
@@ -31,13 +34,15 @@ public class OrderServiceIpml implements OrderService {
     private final OrderRepository orderRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final OrderInitialLoadProducer orderInitialLoadProducer;
+    private final WalletServiceClient walletServiceClient;
 
     // Constructor now takes the new Kafka Producers
     public OrderServiceIpml(OrderRepository orderRepository, OutboxEventRepository outboxEventRepository,
-                            OrderInitialLoadProducer orderInitialLoadProducer) {       // Inject new producer
+                            OrderInitialLoadProducer orderInitialLoadProducer, WalletServiceClient walletServiceClient) {       // Inject new producer
         this.orderRepository = orderRepository;
         this.outboxEventRepository = outboxEventRepository;
         this.orderInitialLoadProducer = orderInitialLoadProducer;
+        this.walletServiceClient = walletServiceClient;
     }
 
     @PostConstruct
@@ -54,18 +59,45 @@ public class OrderServiceIpml implements OrderService {
     @Override
     @Transactional
     public Order createOrder (Order order) {
-        // Generate UUID for the order and set initial status
+        String userId = order.getUserId();
+        String currencyToCheck;
+        BigDecimal amountNeeded;
+
+        if (OrderSide.BUY.equals(order.getSide())) {
+            currencyToCheck = order.getInstrumentId().substring(3);
+            amountNeeded = order.getPrice().multiply(order.getOriginalQuantity());
+        } else if (OrderSide.SELL.equals(order.getSide())) {
+            currencyToCheck = order.getInstrumentId().substring(0, 3);
+            amountNeeded = order.getOriginalQuantity();
+        } else {
+            log.error("Invalid order side: {}", order.getSide());
+            throw new IllegalArgumentException("Invalid order side.");
+        }
+
+        log.info("Checking balance for user {} for currency {} and amount {}", userId, currencyToCheck, amountNeeded);
+
+        BigDecimal availableBalance = walletServiceClient.getAvailableBalance(userId, currencyToCheck)
+                .orElseThrow(() -> {
+                    log.error("Failed to retrieve available balance from Wallet Service for user {} and currency {}", userId, currencyToCheck);
+                    return new RuntimeException("Could not verify funds. Please try again.");
+                });
+
+        if (availableBalance.compareTo(amountNeeded) < 0) {
+            log.warn("Insufficient funds for user {}. Available: {}, Needed: {}", userId, availableBalance, amountNeeded);
+            throw new InsufficientFundsException("Insufficient funds for " + currencyToCheck + ".");
+        }
+
+        log.info("User {} has sufficient funds (Available: {}) for order.", userId, availableBalance);
+
         order.setOrderId(UUID.randomUUID().toString());
         order.setTimestamp(Instant.now());
         order.setRemainingQuantity(order.getOriginalQuantity());
         order.setFilledQuantity(BigDecimal.valueOf(0.0));
         order.setStatus(OrderStatus.OPEN);
 
-        // save to db
         Order savedOrder = orderRepository.save(order);
         log.info("Saved new order to DB (initial state): {}", savedOrder.getOrderId());
 
-        // create outbox
         OutboxEvent outboxEvent = OutboxEvent.createOrderCreatedEvent(savedOrder, OrderCommandProducer.ORDER_COMMANDS_TOPIC);
         outboxEventRepository.save(outboxEvent);
         log.info("Recorded new order event to outbox for ID: {}. Outbox event ID: {}", savedOrder.getOrderId(), outboxEvent.getId());

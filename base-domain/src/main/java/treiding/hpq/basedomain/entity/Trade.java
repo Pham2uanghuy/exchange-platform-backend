@@ -37,6 +37,16 @@ public class Trade {
     private String sellerOrderId;
 
     /**
+     * User Id of the buyer
+     */
+    private String buyerId;
+
+    /**
+     * User Id of the seller
+     */
+    private String sellerId;
+
+    /**
      * Identifier of the instrument being traded (e.g., BTC-USD).
      */
     private String instrumentId;
@@ -64,7 +74,7 @@ public class Trade {
     public Trade() {
     }
 
-    public Trade(String tradeId, String buyerOrderId, String sellerOrderId, String instrumentId, BigDecimal tradedPrice, BigDecimal tradedQuantity, Instant timestamp) {
+    public Trade(String tradeId, String buyerOrderId, String buyerId, String sellerOrderId, String sellerId, String instrumentId, BigDecimal tradedPrice, BigDecimal tradedQuantity, Instant timestamp) {
         this.tradeId = tradeId;
         this.buyerOrderId = buyerOrderId;
         this.sellerOrderId = sellerOrderId;
@@ -72,6 +82,8 @@ public class Trade {
         this.tradedPrice = tradedPrice;
         this.tradedQuantity = tradedQuantity;
         this.timestamp = timestamp;
+        this.buyerId = buyerId;
+        this.sellerId = sellerId;
     }
 
     public Long getId() {
@@ -136,5 +148,21 @@ public class Trade {
 
     public void setTradeId(String tradeId) {
         this.tradeId = tradeId;
+    }
+
+    public String getBuyerId() {
+        return buyerId;
+    }
+
+    public void setBuyerId(String buyerId) {
+        this.buyerId = buyerId;
+    }
+
+    public String getSellerId() {
+        return sellerId;
+    }
+
+    public void setSellerId(String sellerId) {
+        this.sellerId = sellerId;
     }
 }
