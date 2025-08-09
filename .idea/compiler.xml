@@ -9,8 +9,10 @@
         <module name="base-domain" />
         <module name="order-status-service" />
         <module name="market-data-service" />
-        <module name="order-service" />
         <module name="matching-service" />
+        <module name="order-service" />
+        <module name="user-service" />
+        <module name="wallet-service" />
       </profile>
     </annotationProcessing>
   </component>
@@ -21,6 +23,8 @@
       <module name="matching-service" options="-parameters" />
       <module name="order-service" options="-parameters" />
       <module name="order-status-service" options="-parameters" />
+      <module name="user-service" options="-parameters" />
+      <module name="wallet-service" options="-parameters" />
     </option>
   </component>
 </project>
