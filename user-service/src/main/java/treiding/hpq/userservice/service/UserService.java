@@ -4,12 +4,14 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import treiding.hpq.basedomain.kafkaevent.userevent.UserCreatedEvent;
 import treiding.hpq.userservice.entity.KycStatus;
 import treiding.hpq.userservice.entity.Role;
 import treiding.hpq.userservice.entity.User;
 import treiding.hpq.userservice.entity.UserProfile;
 import treiding.hpq.userservice.exception.specific.EmailAlreadyExistsException;
 import treiding.hpq.userservice.exception.specific.UserNotFoundException;
+import treiding.hpq.userservice.kafka.UserCreatedProducer;
 import treiding.hpq.userservice.repository.UserRepository;
 
 import java.time.LocalDateTime;
@@ -20,11 +22,13 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UserCreatedProducer userCreatedProducer;
 
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, UserCreatedProducer userCreatedProducer) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.userCreatedProducer = userCreatedProducer;
     }
 
     public User createUser(User newUser) {
@@ -54,8 +58,12 @@ public class UserService {
             newUser.setUserProfile(requestProfile);
         }
 
+        // Publish a Kafka event to Wallet service to init wallet
+        UserCreatedEvent event = new UserCreatedEvent(newUser.getUserId());
+        userCreatedProducer.publishUserCreatedEvent(event);
         // save
         return userRepository.save(newUser);
+
     }
 
     public User getUserById(String id) {

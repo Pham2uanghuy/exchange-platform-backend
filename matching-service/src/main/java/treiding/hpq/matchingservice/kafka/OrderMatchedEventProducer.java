@@ -4,7 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import treiding.hpq.basedomain.kafka.BaseKafkaProducer;
-import treiding.hpq.basedomain.kafkaevent.OrderMatchedEvent;
+import treiding.hpq.basedomain.kafkaevent.orderevent.OrderMatchedEvent;
 
 @Component
 public class OrderMatchedEventProducer extends BaseKafkaProducer<OrderMatchedEvent> {

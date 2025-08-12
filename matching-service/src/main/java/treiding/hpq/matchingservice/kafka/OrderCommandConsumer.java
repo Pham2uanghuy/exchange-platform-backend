@@ -9,7 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.stereotype.Component;
 import treiding.hpq.basedomain.kafka.BaseKafkaConsumer;
-import treiding.hpq.basedomain.kafkaevent.OrderCommandEvent;
+import treiding.hpq.basedomain.kafkaevent.orderevent.OrderCommandEvent;
 
 import java.util.Properties;
 

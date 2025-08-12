@@ -34,7 +34,7 @@ public class TradeEventConsumer extends BaseKafkaConsumer<Trade> {
      */
     public TradeEventConsumer(
             @Value("${spring.kafka.consumer.bootstrap-servers}") String bootstrapServers,
-            @Value("${spring.kafka.consumer.group-id}") String groupId,
+            @Value("${spring.kafka.consumer.group-id.trade-event}") String groupId,
             TradeEventProcessor tradeEventProcessor) {
 
         // Pass the built properties and the topic name to the superclass constructor.

@@ -3,8 +3,8 @@ package treiding.hpq.orderstatusservice.kafka;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import treiding.hpq.basedomain.kafkaevent.OrderCancellationRejectedEvent;
-import treiding.hpq.basedomain.kafkaevent.OrderConfirmedCancellationEvent;
+import treiding.hpq.basedomain.kafkaevent.orderevent.OrderCancellationRejectedEvent;
+import treiding.hpq.basedomain.kafkaevent.orderevent.OrderConfirmedCancellationEvent;
 
 import java.io.IOException;
 
