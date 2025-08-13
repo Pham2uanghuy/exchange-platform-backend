@@ -8,23 +8,22 @@
         <outputRelativeToContentRoot value="true" />
         <module name="base-domain" />
         <module name="order-status-service" />
-        <module name="market-data-service" />
-        <module name="matching-service" />
         <module name="order-service" />
-        <module name="user-service" />
-        <module name="wallet-service" />
+        <module name="matching-service" />
       </profile>
     </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="market-data-service" target="17" />
+      <module name="user-service" target="17" />
+      <module name="wallet-service" target="17" />
+    </bytecodeTargetLevel>
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
       <module name="base-domain" options="-parameters" />
-      <module name="market-data-service" options="-parameters" />
       <module name="matching-service" options="-parameters" />
       <module name="order-service" options="-parameters" />
       <module name="order-status-service" options="-parameters" />
-      <module name="user-service" options="-parameters" />
-      <module name="wallet-service" options="-parameters" />
     </option>
   </component>
 </project>
