@@ -7,7 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import treiding.hpq.basedomain.entity.Order;
 import treiding.hpq.basedomain.entity.OrderStatus;
-import treiding.hpq.basedomain.kafkaevent.OrderCommandEvent;
+import treiding.hpq.basedomain.kafkaevent.orderevent.OrderCommandEvent;
 import treiding.hpq.matchingservice.entity.OrderBook;
 import treiding.hpq.matchingservice.kafka.*;
 

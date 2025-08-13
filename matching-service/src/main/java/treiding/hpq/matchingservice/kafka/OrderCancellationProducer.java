@@ -4,8 +4,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import treiding.hpq.basedomain.kafka.BaseKafkaProducer;
-import treiding.hpq.basedomain.kafkaevent.OrderCancellationRejectedEvent;
-import treiding.hpq.basedomain.kafkaevent.OrderConfirmedCancellationEvent;
+import treiding.hpq.basedomain.kafkaevent.orderevent.OrderCancellationRejectedEvent;
+import treiding.hpq.basedomain.kafkaevent.orderevent.OrderConfirmedCancellationEvent;
 
 
 @Component
