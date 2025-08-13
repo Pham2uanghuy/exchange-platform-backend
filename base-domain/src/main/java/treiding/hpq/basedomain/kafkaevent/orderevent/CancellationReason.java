@@ -1,4 +1,4 @@
-package treiding.hpq.basedomain.kafkaevent;
+package treiding.hpq.basedomain.kafkaevent.orderevent;
 
 public enum CancellationReason {
     CANCELED_BY_REQUEST,

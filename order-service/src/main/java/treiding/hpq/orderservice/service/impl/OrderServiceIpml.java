@@ -62,12 +62,14 @@ public class OrderServiceIpml implements OrderService {
         String userId = order.getUserId();
         String currencyToCheck;
         BigDecimal amountNeeded;
+        String[] currencies = order.getInstrumentId().split("/");
+        // ex: BTC/USD -> [BTC, USD]
 
         if (OrderSide.BUY.equals(order.getSide())) {
-            currencyToCheck = order.getInstrumentId().substring(3);
+            currencyToCheck = currencies[1];
             amountNeeded = order.getPrice().multiply(order.getOriginalQuantity());
         } else if (OrderSide.SELL.equals(order.getSide())) {
-            currencyToCheck = order.getInstrumentId().substring(0, 3);
+            currencyToCheck = currencies[0];
             amountNeeded = order.getOriginalQuantity();
         } else {
             log.error("Invalid order side: {}", order.getSide());

@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import treiding.hpq.basedomain.kafka.BaseKafkaConsumer;
-import treiding.hpq.basedomain.kafkaevent.OrderCancellationRejectedEvent;
-import treiding.hpq.basedomain.kafkaevent.OrderConfirmedCancellationEvent;
+import treiding.hpq.basedomain.kafkaevent.orderevent.OrderCancellationRejectedEvent;
+import treiding.hpq.basedomain.kafkaevent.orderevent.OrderConfirmedCancellationEvent;
 import treiding.hpq.orderstatusservice.service.OrderStatusUpdateService;
 
 import java.util.Properties;
