@@ -53,7 +53,7 @@ public class OrderCommandConsumer extends BaseKafkaConsumer<OrderCommandEvent> {
         props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, OrderCommandEvent.class.getName());
 
         // Start consuming from latest offset (recommended for real-time processing)
-        props.put("auto.offset.reset", "latest");
+        props.put("auto.offset.reset", "earliest");
 
         // Enable auto offset commit (can be set to false for manual commit if stronger guarantees are needed)
         props.put("enable.auto.commit", "true");
