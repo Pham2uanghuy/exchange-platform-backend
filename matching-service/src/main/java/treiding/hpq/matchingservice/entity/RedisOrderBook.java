@@ -10,7 +10,13 @@ import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class RedisOrderBook {
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.Pipeline;
+import redis.clients.jedis.Response;
+import redis.clients.jedis.Transaction;
+
+public class RedisOrderBook implements OrderBook {
 
     private final JedisPool jedisPool;
     private final String instrumentId;
@@ -26,68 +32,91 @@ public class RedisOrderBook {
         this.ASK_KEY = "orderbook:" + instrumentId + ":asks";
     }
 
-    public JedisPool getJedisPool() { return jedisPool; }
-    public String getBidKey() { return BID_KEY; }
-    public String getAskKey() { return ASK_KEY; }
-    public static String getOrderDetailKey(String orderId) { return ORDER_DETAIL_PREFIX + orderId; }
-
+    @Override
     public void addOrder(Order order) {
         try (Jedis jedis = jedisPool.getResource()) {
             Transaction t = jedis.multi();
 
             Map<String, String> orderData = orderToHashMap(order);
-            t.hset(ORDER_DETAIL_PREFIX + order.getOrderId(), orderData);
+            t.hset(getOrderDetailKey(order.getOrderId()), orderData);
 
             String targetKey = (order.getSide() == OrderSide.BUY) ? BID_KEY : ASK_KEY;
             double score = order.getPrice().doubleValue();
             t.zadd(targetKey, score, order.getOrderId());
 
             t.exec();
-            System.out.println("DEBUG: Đã thêm/cập nhật lệnh " + order.getOrderId() + " vào Redis.");
         } catch (Exception e) {
-            System.err.println("Lỗi khi thêm/cập nhật lệnh " + order.getOrderId() + " vào Redis: " + e.getMessage());
-            throw new RuntimeException("Lỗi Redis khi thêm lệnh", e);
+            throw new RuntimeException("Lỗi Redis khi thêm lệnh " + order.getOrderId(), e);
         }
     }
 
+    @Override
+    public void updateOrder(Order updatedOrder) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            Order existingOrder = getOrderDetail(updatedOrder.getOrderId());
+            if (existingOrder == null) {
+                // Nếu lệnh không tồn tại, có thể xem xét thêm mới hoặc ném ngoại lệ
+                addOrder(updatedOrder);
+                return;
+            }
+
+            Transaction t = jedis.multi();
+
+            // Xóa lệnh cũ khỏi Sorted Set nếu giá hoặc bên mua/bán thay đổi
+            if (!existingOrder.getPrice().equals(updatedOrder.getPrice()) || existingOrder.getSide() != updatedOrder.getSide()) {
+                String oldTargetKey = (existingOrder.getSide() == OrderSide.BUY) ? BID_KEY : ASK_KEY;
+                t.zrem(oldTargetKey, updatedOrder.getOrderId());
+
+                String newTargetKey = (updatedOrder.getSide() == OrderSide.BUY) ? BID_KEY : ASK_KEY;
+                double newScore = updatedOrder.getPrice().doubleValue();
+                t.zadd(newTargetKey, newScore, updatedOrder.getOrderId());
+            }
+
+            // Cập nhật chi tiết lệnh trong Hash
+            Map<String, String> orderData = orderToHashMap(updatedOrder);
+            t.hset(getOrderDetailKey(updatedOrder.getOrderId()), orderData);
+
+            t.exec();
+        } catch (Exception e) {
+            throw new RuntimeException("Lỗi Redis khi cập nhật lệnh " + updatedOrder.getOrderId(), e);
+        }
+    }
+
+    @Override
     public void removeOrder(Order order) {
         try (Jedis jedis = jedisPool.getResource()) {
             Transaction t = jedis.multi();
 
             String targetKey = (order.getSide() == OrderSide.BUY) ? BID_KEY : ASK_KEY;
             t.zrem(targetKey, order.getOrderId());
-            t.del(ORDER_DETAIL_PREFIX + order.getOrderId());
+            t.del(getOrderDetailKey(order.getOrderId()));
 
-            List<Object> results = t.exec();
-            Long zremResult = (Long) results.get(0);
-
-            if (zremResult > 0) {
-                System.out.println("DEBUG: Đã xóa lệnh " + order.getOrderId() + " khỏi Redis.");
-            } else {
-                System.out.println("DEBUG: Lệnh " + order.getOrderId() + " không tìm thấy trong Redis Sorted Set để xóa.");
-            }
+            t.exec();
         } catch (Exception e) {
-            System.err.println("Lỗi khi xóa lệnh " + order.getOrderId() + " khỏi Redis: " + e.getMessage());
-            throw new RuntimeException("Lỗi Redis khi xóa lệnh", e);
+            throw new RuntimeException("Lỗi Redis khi xóa lệnh " + order.getOrderId(), e);
         }
     }
 
-    public Iterator<Map.Entry<BigDecimal, List<Order>>> getBidLevelsIterator() {
+    @Override
+    public Iterator<Map.Entry<BigDecimal, List<Order>>> getBidLevelsIterator(String instrumentId) {
         try (Jedis jedis = jedisPool.getResource()) {
-            Set<String> orderIds = new HashSet<>(jedis.zrevrange(BID_KEY, 0, -1));  // fix kiểu dữ liệu
+            Set<String> orderIds = new HashSet<>(jedis.zrevrange(BID_KEY, 0, -1));
             return getOrderLevelsIterator(orderIds, true);
         }
     }
 
-    public Iterator<Map.Entry<BigDecimal, List<Order>>> getAskLevelsIterator() {
+    @Override
+    public Iterator<Map.Entry<BigDecimal, List<Order>>> getAskLevelsIterator(String instrumentId) {
         try (Jedis jedis = jedisPool.getResource()) {
-            Set<String> orderIds = new HashSet<>(jedis.zrange(ASK_KEY, 0, -1));  // fix kiểu dữ liệu
+            Set<String> orderIds = new HashSet<>(jedis.zrange(ASK_KEY, 0, -1));
             return getOrderLevelsIterator(orderIds, false);
         }
     }
 
     private Iterator<Map.Entry<BigDecimal, List<Order>>> getOrderLevelsIterator(Set<String> orderIds, boolean isBid) {
-        if (orderIds.isEmpty()) return Collections.emptyIterator();
+        if (orderIds.isEmpty()) {
+            return Collections.emptyIterator();
+        }
 
         List<Order> orders = new ArrayList<>();
         try (Jedis jedis = jedisPool.getResource()) {
@@ -95,17 +124,14 @@ public class RedisOrderBook {
             List<Response<Map<String, String>>> responses = new ArrayList<>();
 
             for (String orderId : orderIds) {
-                responses.add(p.hgetAll(ORDER_DETAIL_PREFIX + orderId));
+                responses.add(p.hgetAll(getOrderDetailKey(orderId)));
             }
             p.sync();
 
-            int i = 0;
-            for (String orderId : orderIds) {
-                Map<String, String> orderData = responses.get(i++).get();
+            for (Response<Map<String, String>> response : responses) {
+                Map<String, String> orderData = response.get();
                 if (orderData != null && !orderData.isEmpty()) {
                     orders.add(hashMapToOrder(orderData));
-                } else {
-                    System.err.println("Cảnh báo: Không tìm thấy lệnh " + orderId + " trong Redis.");
                 }
             }
         }
@@ -113,11 +139,9 @@ public class RedisOrderBook {
         Map<BigDecimal, List<Order>> groupedOrders = orders.stream()
                 .collect(Collectors.groupingBy(Order::getPrice, LinkedHashMap::new, Collectors.toList()));
 
-        List<BigDecimal> sortedPrices = orders.stream()
-                .map(Order::getPrice)
-                .distinct()
+        List<BigDecimal> sortedPrices = groupedOrders.keySet().stream()
                 .sorted(isBid ? Comparator.reverseOrder() : Comparator.naturalOrder())
-                .toList();
+                .collect(Collectors.toList());
 
         LinkedHashMap<BigDecimal, List<Order>> finalGroupedOrders = new LinkedHashMap<>();
         for (BigDecimal price : sortedPrices) {
@@ -127,6 +151,7 @@ public class RedisOrderBook {
         return finalGroupedOrders.entrySet().iterator();
     }
 
+    @Override
     public void clear() {
         try (Jedis jedis = jedisPool.getResource()) {
             Transaction t = jedis.multi();
@@ -140,21 +165,31 @@ public class RedisOrderBook {
 
             if (!allOrderIds.isEmpty()) {
                 String[] orderDetailKeys = allOrderIds.stream()
-                        .map(id -> ORDER_DETAIL_PREFIX + id)
+                        .map(RedisOrderBook::getOrderDetailKey)
                         .toArray(String[]::new);
                 t.del(orderDetailKeys);
             }
-
             t.exec();
-            System.out.println("Order book cho " + instrumentId + " đã được xóa.");
         } catch (Exception e) {
-            System.err.println("Lỗi khi xóa Order Book cho " + instrumentId + ": " + e.getMessage());
-            throw new RuntimeException("Lỗi Redis khi xóa sổ lệnh", e);
+            throw new RuntimeException("Lỗi Redis khi xóa sổ lệnh cho " + instrumentId, e);
         }
+    }
+
+    @Override
+    public Order getOrderDetail(String orderId) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            Map<String, String> orderData = jedis.hgetAll(getOrderDetailKey(orderId));
+            return hashMapToOrder(orderData);
+        }
+    }
+
+    private static String getOrderDetailKey(String orderId) {
+        return ORDER_DETAIL_PREFIX + orderId;
     }
 
     private Map<String, String> orderToHashMap(Order order) {
         Map<String, String> orderData = new HashMap<>();
+        orderData.put("id", String.valueOf(order.getId()));
         orderData.put("orderId", order.getOrderId());
         orderData.put("instrumentId", order.getInstrumentId());
         orderData.put("side", order.getSide().name());
@@ -163,14 +198,19 @@ public class RedisOrderBook {
         orderData.put("remainingQuantity", order.getRemainingQuantity().toPlainString());
         orderData.put("status", order.getStatus().name());
         orderData.put("timestamp", String.valueOf(order.getTimestamp().toEpochMilli()));
+        orderData.put("userId", order.getUserId());
         return orderData;
     }
 
-    public Order hashMapToOrder(Map<String, String> orderData) {
-        if (orderData == null || orderData.isEmpty()) return null;
+    private Order hashMapToOrder(Map<String, String> orderData) {
+        if (orderData == null || orderData.isEmpty()) {
+            return null;
+        }
         return new Order(
+                Long.valueOf(orderData.get("id")),
                 orderData.get("orderId"),
                 orderData.get("instrumentId"),
+                orderData.get("userId"),
                 OrderSide.valueOf(orderData.get("side")),
                 new BigDecimal(orderData.get("price")),
                 new BigDecimal(orderData.get("originalQuantity")),
@@ -178,12 +218,5 @@ public class RedisOrderBook {
                 OrderStatus.valueOf(orderData.get("status")),
                 Instant.ofEpochMilli(Long.parseLong(orderData.get("timestamp")))
         );
-    }
-
-    public Order getOrderDetail(String orderId) {
-        try (Jedis jedis = jedisPool.getResource()) {
-            Map<String, String> orderData = jedis.hgetAll(ORDER_DETAIL_PREFIX + orderId);
-            return hashMapToOrder(orderData);
-        }
     }
 }

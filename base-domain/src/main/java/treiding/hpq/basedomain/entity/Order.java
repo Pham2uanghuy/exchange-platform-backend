@@ -93,10 +93,12 @@ public class Order {
     @Column(name = "version")
     private Integer version;
 
-    // this constructor's used in RedisOrderBook
-    public Order(String orderId, String instrumentId, OrderSide side, BigDecimal price, BigDecimal originalQuantity, BigDecimal remainingQuantity, OrderStatus status, Instant timestamp) {
+    // this contructor is used in RedisOrderBook
+    public Order(Long id, String orderId, String instrumentId, String userId, OrderSide side, BigDecimal price, BigDecimal originalQuantity, BigDecimal remainingQuantity, OrderStatus status, Instant timestamp) {
+        this.id = id;
         this.orderId = orderId;
         this.instrumentId = instrumentId;
+        this.userId = userId;
         this.side = side;
         this.price = price;
         this.originalQuantity = originalQuantity;

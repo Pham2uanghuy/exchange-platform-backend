@@ -55,7 +55,7 @@ public class OrderStatusUpdateConsumer extends BaseKafkaConsumer<OrderMatchedEve
         props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
         props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, Order.class.getName());
         props.put("auto.offset.reset", "earliest");
-        props.put("enable.auto.commit", "false"); // Setting to false for more control over commit
+        props.put("enable.auto.commit", "true"); // Setting to false for more control over commit
         return props;
     }
 

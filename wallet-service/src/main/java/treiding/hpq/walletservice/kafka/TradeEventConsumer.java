@@ -60,7 +60,7 @@ public class TradeEventConsumer extends BaseKafkaConsumer<Trade> {
         props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, Trade.class.getName());
 
         // For critical data, it's often best to handle offsets manually after processing.
-        props.put("enable.auto.commit", "false");
+        props.put("enable.auto.commit", "true");
         props.put("auto.offset.reset", "earliest");
 
         return props;

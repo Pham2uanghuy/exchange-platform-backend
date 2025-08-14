@@ -20,14 +20,8 @@ public class WalletController {
         this.walletManagerService = walletManagerService;
     }
 
-    /**
-     * Retrieves the wallet balances for the authenticated user.
-     * Requires a valid JWT token.
-     * @param userId
-     * @return A list of wallet balances.
-     */
     @GetMapping("/balances")
-    public ResponseEntity<List<WalletBalanceResponse>> getWalletBalances(String userId) {
+    public ResponseEntity<List<WalletBalanceResponse>> getWalletBalances(@RequestParam String userId) {
         List<WalletBalanceResponse> balances = walletManagerService.getBalancesByUserId(userId);
         return ResponseEntity.ok(balances);
     }
@@ -45,11 +39,9 @@ public class WalletController {
             @RequestParam String currency) {
 
         BigDecimal availableBalance = walletManagerService.getAvailableBalance(userId, currency);
-
-        if (availableBalance != null) {
-            return ResponseEntity.ok(availableBalance);
-        }
-
-        return ResponseEntity.notFound().build();
+        return availableBalance != null
+                ? ResponseEntity.ok(availableBalance)
+                : ResponseEntity.notFound().build();
     }
 }
+
