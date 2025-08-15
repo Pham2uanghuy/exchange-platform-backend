@@ -13,9 +13,6 @@ import treiding.hpq.matchingservice.entity.OrderBook;
 import treiding.hpq.matchingservice.kafka.*;
 
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 
 @Service
@@ -26,85 +23,76 @@ public class MatchingService {
     private final OrderBookManager orderBookManager;
     private final Map<String, MatchingEngine> matchingEngines;
 
-    private final OrderCommandConsumer orderCommandConsumer; // Consumer for real-time order events
+    private final OrderCommandConsumer orderCommandConsumer;
     private final OrderMatchedEventProducer orderMatchedEventProducer;
     private final TradeEventProducer tradeProducer;
     private final OrderCancellationProducer orderCancellationProducer;
-    // A dedicated executor for Kafka listeners to run in the background
-    // This allows the main application thread to continue starting up.
-    private final ExecutorService kafkaListenerExecutor;
 
+    /**
+     * Constructs the MatchingService with all required dependencies.
+     *
+     * @param orderBookManager        Service to manage and retrieve order books.
+     * @param orderCommandConsumer    Kafka consumer for handling order command events.
+     * @param orderMatchedEventProducer Kafka producer to send matched order events.
+     * @param tradeProducer           Kafka producer to send trade events.
+     * @param orderCancellationProducer Kafka producer to send order cancellation events.
+     */
+    public MatchingService(
+            @Lazy OrderBookManager orderBookManager,
+            OrderCommandConsumer orderCommandConsumer,
+            OrderMatchedEventProducer orderMatchedEventProducer,
+            TradeEventProducer tradeProducer,
+            OrderCancellationProducer orderCancellationProducer) {
 
-    public MatchingService(@Lazy OrderBookManager orderBookManager,
-                           OrderCommandConsumer orderCommandConsumer,
-                           OrderMatchedEventProducer orderMatchedEventProducer,
-                           TradeEventProducer tradeProducer,
-                           OrderCancellationProducer orderCancellationProducer, OrderMatchedEventProducer orderMatchedEventProducer1, TradeEventProducer tradeProducer1, OrderCancellationProducer orderCancellationProducer1) {
         this.orderBookManager = orderBookManager;
-
-        this.orderCommandConsumer = orderCommandConsumer; // Initialize the real-time consumer
-        this.orderMatchedEventProducer = orderMatchedEventProducer1;
-        this.tradeProducer = tradeProducer1;
-        this.orderCancellationProducer = orderCancellationProducer1;
+        this.orderCommandConsumer = orderCommandConsumer;
+        this.orderMatchedEventProducer = orderMatchedEventProducer;
+        this.tradeProducer = tradeProducer;
+        this.orderCancellationProducer = orderCancellationProducer;
         this.matchingEngines = new HashMap<>();
-        // Create a single-threaded executor for Kafka listeners
-        this.kafkaListenerExecutor = Executors.newSingleThreadExecutor();
     }
 
     /**
-     * Initializes the MatchingService after all dependencies have been injected.
-     * This method orchestrates the initial loading of open orders and starting
-     * of real-time Kafka listeners.
+     * Initializes the matching engines and starts Kafka listeners.
+     * This method is called automatically after Spring finishes dependency injection.
      */
     @PostConstruct
     public void init() {
-        log.info("[MatchingService] Initializing engines..");
+        log.info("[MatchingService] Initializing engines...");
         initializeMatchingEngines();
-        log.info("[MatchingService] Starting kafka listener for order commands");
-        kafkaListenerExecutor.submit(() -> {
-            try {
-                startKafkaListeners();
-            } catch (Exception e) {
-                log.error("[MatchingService] Error during initialization: {}", e.getMessage(), e);
-            }
-        });
+
+        log.info("[MatchingService] Starting Kafka listener for order commands");
+        startKafkaListeners(); // Direct call, no extra thread needed
     }
 
     /**
-     * Shuts down the Kafka listener executor gracefully when the application stops.
+     * Gracefully shuts down the service when the application is stopping.
+     * Stops Kafka consumers and matching engines to release resources.
      */
     @PreDestroy
     public void shutdown() {
         log.info("[MatchingService] Initiating graceful shutdown of Kafka listeners.");
-        // Stop the real-time consumer first if it has a stop method
         orderCommandConsumer.stopConsuming();
 
-        // Shutdown the executor that runs the Kafka listeners
-        kafkaListenerExecutor.shutdown();
-        try {
-            if (!kafkaListenerExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
-                log.warn("[MatchingService] Kafka listener executor did not terminate gracefully. Forcing shutdown.");
-                kafkaListenerExecutor.shutdownNow();
-            }
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            log.error("[MatchingService] Shutdown of Kafka listener executor interrupted.");
-        }
-        log.info("[MatchingService] Kafka listener shutdown complete.");
-        log.info("[MatchingService] Shutting down MatchingEngine gracefully...");
+        log.info("[MatchingService] Shutting down MatchingEngines...");
         matchingEngines.values().forEach(MatchingEngine::shutdown);
-        log.info("[MatchingService] MatchingEngine shutdown initiated.");
+        log.info("[MatchingService] Shutdown complete.");
     }
 
+    /**
+     * Initializes MatchingEngine instances for each available instrument in the order book.
+     * Each instrument gets its own independent MatchingEngine instance.
+     */
     private void initializeMatchingEngines() {
         for (String instrumentId : orderBookManager.getInstrumentIds()) {
             OrderBook orderBook = orderBookManager.getOrderBook(instrumentId);
             if (orderBook != null) {
-                // Initialize engine with its own orderbook
-                MatchingEngine engine = new MatchingEngine(orderBook,
+                MatchingEngine engine = new MatchingEngine(
+                        orderBook,
                         orderMatchedEventProducer,
                         tradeProducer,
-                        orderCancellationProducer);
+                        orderCancellationProducer
+                );
                 matchingEngines.put(instrumentId, engine);
                 log.info("[MatchingService] Initialized MatchingEngine for instrument: {}", instrumentId);
             } else {
@@ -113,10 +101,10 @@ public class MatchingService {
         }
     }
 
-
     /**
-     * Starts listening to real-time Kafka topics for new orders and order updates.
-     * The `handleNewOrUpdatedOrderEvent` method will process each incoming event.
+     * Starts Kafka listeners for order commands.
+     * Listens to the "order.events" topic and delegates message handling
+     * to the {@link #handleOrderCommand(OrderCommandEvent)} method.
      */
     private void startKafkaListeners() {
         log.info("[MatchingService] Starting real-time Kafka listeners for order events.");
@@ -124,36 +112,41 @@ public class MatchingService {
     }
 
     /**
-     * Processes a new or updated order event received from real-time Kafka stream.
-     * This method decides whether the order needs to be added to the matching queue.
-     * @param eventMessage The order object received from Kafka.
+     * Handles incoming order command events from Kafka.
+     * <p>
+     * Depending on the event type, this method will either enqueue the order
+     * for matching, cancel it from the order book, or ignore it if not relevant.
+     * </p>
+     *
+     * @param eventMessage The order command event received from Kafka.
      */
     private void handleOrderCommand(OrderCommandEvent eventMessage) {
-        Order eventOrder = eventMessage.getOrder(); // Get Order from msg
-        String eventType = eventMessage.getEventType(); // Get EventType from msg
+        Order eventOrder = eventMessage.getOrder();
+        String eventType = eventMessage.getEventType();
         String instrumentId = eventOrder.getInstrumentId();
 
         MatchingEngine engine = matchingEngines.get(instrumentId);
 
-        log.info("[MatchingService] Received real-time event from Kafka: EventType={}, OrderId={}",
+        log.info("[MatchingService] Received Kafka event: EventType={}, OrderId={}",
                 eventType, eventOrder.getOrderId());
 
-        if ("OrderCreated".equals(eventType) || ("OrderUpdated".equals(eventType) && eventOrder.getStatus() == OrderStatus.OPEN)) {
+        if ("OrderCreated".equals(eventType) ||
+                ("OrderUpdated".equals(eventType) && eventOrder.getStatus() == OrderStatus.OPEN)) {
             engine.addToOrderQueue(eventOrder);
-            log.info("[MatchingService] Enqueued new order {} for matching.", eventOrder.getOrderId());
+            log.info("[MatchingService] Enqueued order {} for matching.", eventOrder.getOrderId());
+
         } else if ("OrderCancelled".equals(eventType)) {
-            log.info("[MatchingService] Received cancellation for order {}. Attempting to remove from book.", eventOrder.getOrderId());
-            Order ordertoCancel = engine.getOpenOrderById(eventOrder.getOrderId());
-            if (ordertoCancel != null) {
+            log.info("[MatchingService] Received cancellation for order {}.", eventOrder.getOrderId());
+            Order orderToCancel = engine.getOpenOrderById(eventOrder.getOrderId());
+            if (orderToCancel != null) {
                 engine.cancelOrder(eventOrder.getOrderId());
-                log.info("[MatchingService] Order {} successfully cancelled in OrderBook.", eventOrder.getOrderId());
+                log.info("[MatchingService] Order {} cancelled in OrderBook.", eventOrder.getOrderId());
             } else {
-                log.info("[MatchingService] Order {} not found as OPEN in OrderBook. No action needed for cancellation.", eventOrder.getOrderId());
+                log.info("[MatchingService] Order {} not found as OPEN. No cancellation performed.", eventOrder.getOrderId());
             }
         } else {
-            log.debug("[MatchingService] EventType={} for order {} has status {}. Not enqueuing or cancelling (likely internal or already processed).",
+            log.debug("[MatchingService] EventType={} for order {} ignored (status={}).",
                     eventType, eventOrder.getOrderId(), eventOrder.getStatus());
         }
     }
-
 }

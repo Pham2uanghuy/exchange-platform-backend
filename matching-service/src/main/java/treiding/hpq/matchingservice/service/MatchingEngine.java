@@ -24,26 +24,53 @@ import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * The MatchingEngine is responsible for handling incoming orders, matching them against
+ * existing orders in the order book, creating trades, and sending events to external systems.
+ * Key responsibilities:
+ * - Maintain and update the order book (via {@link OrderBook}).
+ * - Match incoming orders sequentially (single-threaded matching loop).
+ * - Handle order cancellations.
+ * - Notify external systems via Kafka producers about trades, matches, and cancellations.
+ * - Provide reset and shutdown capabilities for graceful lifecycle management.
+ */
 public class MatchingEngine {
 
     private static final Logger log = LoggerFactory.getLogger(MatchingEngine.class);
 
+    /** current market orders */
     private final OrderBook orderBook;
 
-    // Kafka Producers to communicate changes back to other services
+    /** Kafka producer to send order matched events to other services */
     private final OrderMatchedEventProducer orderMatchedEventProducer;
+
+    /** Kafka producer to send trade events */
     private final TradeEventProducer tradeProducer;
+
+    /** Kafka producer to send confirm order cancellation events */
     private final OrderCancellationProducer orderCancellationProducer;
 
+    /** Executor service dedicated to sequential order matching */
+    private final ExecutorService matchingExecutor;
 
-    // Fields for multi-threading
-    private final ExecutorService matchingExecutor; // For sequential matching all orders
+    /** Executor service for ancillary tasks (e.g., order cancellation) */
     private final ExecutorService ancillaryTaskExecutor;
-    private final ConcurrentLinkedQueue<Order> incomingOrderQueue; // Queue for new orders
-    private final AtomicBoolean isRunning; // To control the matching loop
+
+    /** Queue storing incoming orders for sequential processing */
+    private final ConcurrentLinkedQueue<Order> incomingOrderQueue;
+
+    /** Flag indicating whether the matching engine is running */
+    private final AtomicBoolean isRunning;
 
 
-    // Constructor now takes Kafka Producers as dependencies
+    /**
+     * Constructs the MatchingEngine with required dependencies.
+     *
+     * @param orderBook                  The in-memory order book instance.
+     * @param orderMatchedEventProducer  Kafka producer for order matched events.
+     * @param tradeProducer               Kafka producer for trade events.
+     * @param orderCancellationProducer   Kafka producer for order cancellation events.
+     */
     public MatchingEngine(OrderBook orderBook,
                           OrderMatchedEventProducer orderMatchedEventProducer,
                           TradeEventProducer tradeProducer, OrderCancellationProducer orderCancellationProducer) {

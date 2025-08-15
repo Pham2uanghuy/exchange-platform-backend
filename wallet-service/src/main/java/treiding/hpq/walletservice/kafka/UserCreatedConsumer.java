@@ -28,8 +28,7 @@ public class UserCreatedConsumer extends BaseKafkaConsumer<UserCreatedEvent> {
             @Value("${spring.kafka.consumer.bootstrap-servers}") String bootstrapServers,
             @Value("${spring.kafka.consumer.group-id.user-create}") String groupId,
             WalletManagerService walletManagerService) {
-
-        super(buildConsumerProps(bootstrapServers, groupId), USER_CREATED_TOPIC);
+        super(buildConsumerProps(bootstrapServers, groupId), USER_CREATED_TOPIC, true, 1);
         this.walletManagerService = walletManagerService;
     }
 
@@ -45,22 +44,17 @@ public class UserCreatedConsumer extends BaseKafkaConsumer<UserCreatedEvent> {
         props.put("group.id", groupId);
         props.put("key.deserializer", StringDeserializer.class.getName());
         props.put("value.deserializer", JsonDeserializer.class.getName());
-
-        // Configure JsonDeserializer to trust all packages and specify the target class.
         props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
         props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, UserCreatedEvent.class.getName());
 
-        // For critical data, it's often best to handle offsets manually after processing.
         props.put("enable.auto.commit", "false");
-        props.put("auto.offset.reset", "latest");
+        props.put("auto.offset.reset", "earliest");
 
         return props;
     }
 
     @Override
     protected Consumer<String, UserCreatedEvent> createKafkaConsumer(Properties consumerProps, String topicName) {
-        // The KafkaConsumer object will be created by the BaseKafkaConsumer's constructor
-        // with the provided properties.
         return new KafkaConsumer<>(consumerProps);
     }
 
@@ -86,7 +80,6 @@ public class UserCreatedConsumer extends BaseKafkaConsumer<UserCreatedEvent> {
             log.info("Successfully created initial wallets for userId: {}", event.getUserId());
         } catch (Exception e) {
             log.error("Failed to create wallets for userId: {}. Error: {}", event.getUserId(), e.getMessage());
-            // Here you could implement retry logic or send a dead-letter-queue message
         }
     }
 }
