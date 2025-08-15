@@ -1,7 +1,5 @@
 package treiding.hpq.orderservice.service.impl;
 
-import jakarta.annotation.PostConstruct;
-import jakarta.persistence.OptimisticLockException;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +11,6 @@ import treiding.hpq.basedomain.exception.OrderCancellationException;
 import treiding.hpq.basedomain.exception.OrderNotFoundException;
 import treiding.hpq.orderservice.exception.InsufficientFundsException;
 import treiding.hpq.orderservice.kafka.OrderCommandProducer;
-import treiding.hpq.orderservice.kafka.OrderInitialLoadProducer;
 import treiding.hpq.orderservice.outbox.OutboxEvent;
 import treiding.hpq.orderservice.repository.OrderRepository;
 import treiding.hpq.orderservice.repository.OutboxEventRepository;
@@ -33,21 +30,15 @@ public class OrderServiceIpml implements OrderService {
 
     private final OrderRepository orderRepository;
     private final OutboxEventRepository outboxEventRepository;
-    private final OrderInitialLoadProducer orderInitialLoadProducer;
     private final WalletServiceClient walletServiceClient;
 
     // Constructor now takes the new Kafka Producers
-    public OrderServiceIpml(OrderRepository orderRepository, OutboxEventRepository outboxEventRepository,
-                            OrderInitialLoadProducer orderInitialLoadProducer, WalletServiceClient walletServiceClient) {       // Inject new producer
+    public OrderServiceIpml(OrderRepository orderRepository,
+                            OutboxEventRepository outboxEventRepository,
+                            WalletServiceClient walletServiceClient) {       // Inject new producer
         this.orderRepository = orderRepository;
         this.outboxEventRepository = outboxEventRepository;
-        this.orderInitialLoadProducer = orderInitialLoadProducer;
         this.walletServiceClient = walletServiceClient;
-    }
-
-    @PostConstruct
-    public void init() {
-        publishAllOpenOrdersToKafka();
     }
 
     /**
@@ -212,33 +203,4 @@ public class OrderServiceIpml implements OrderService {
         }
     }
 
-    /**
-     * Loads all currently OPEN or PARTIALLY_FILLED orders from the database
-     * and publishes them to a dedicated Kafka topic for initial synchronization.
-     * This method is typically called once on application startup or when
-     * a new consumer (like a Matching Engine) needs to rebuild its state.
-     */
-    public void publishAllOpenOrdersToKafka() {
-        log.info("Starting to load and publish all OPEN/PARTIALLY_FILLED orders from DB to Kafka for initial sync.");
-
-        // Find all orders that are currently active (OPEN or PARTIALLY_FILLED)
-        List<Order> activeOrders = orderRepository.findAll().stream()
-                .filter(order -> order.getStatus() == OrderStatus.OPEN || order.getStatus() == OrderStatus.PARTIALLY_FILLED)
-                .toList();
-
-        if (activeOrders.isEmpty()) {
-            log.info("No active orders found in the database to publish for initial sync.");
-            return;
-        }
-        String topic = orderInitialLoadProducer.getInitialLoadTopic();
-        log.info("Found {} active orders in DB. Publishing them to Kafka topic '{}'.",
-                activeOrders.size(), topic); // Use the topic name from producer
-
-        for (Order order : activeOrders) {
-            orderInitialLoadProducer.sendInitialLoadOrder(order);
-            log.debug("Published initial load order for ID: {}", order.getOrderId());
-        }
-
-        log.info("Finished publishing all active orders to Kafka for initial synchronization.");
-    }
 }

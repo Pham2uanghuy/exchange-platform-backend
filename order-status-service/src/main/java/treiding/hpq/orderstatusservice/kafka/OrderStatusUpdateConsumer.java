@@ -20,7 +20,7 @@ public class OrderStatusUpdateConsumer extends BaseKafkaConsumer<OrderMatchedEve
     // Define the specific Kafka topic this consumer listens to
     private static final String TOPIC = "order-matched-events";
 
-    private final OrderStatusUpdateService orderStatusUpdateService; // Inject the service to handle updates
+    private final OrderStatusUpdateService orderStatusUpdateService;
 
     /**
      * Constructs the OrderStatusUpdateConsumer.
@@ -34,7 +34,7 @@ public class OrderStatusUpdateConsumer extends BaseKafkaConsumer<OrderMatchedEve
                                      @Value("${spring.kafka.consumer.group-id.order-status-updates}") String groupId,
                                      OrderStatusUpdateService orderStatusUpdateService) { // Corrected parameter name & injection
         // Call the superclass constructor, passing the built properties and the fixed topic name
-        super(buildConsumerProps(bootstrapServers, groupId), TOPIC);
+        super(buildConsumerProps(bootstrapServers, groupId), TOPIC, true, 1);
         this.orderStatusUpdateService = orderStatusUpdateService; // Initialize the injected service
     }
 
@@ -49,13 +49,12 @@ public class OrderStatusUpdateConsumer extends BaseKafkaConsumer<OrderMatchedEve
         props.put("bootstrap.servers", bootstrapServers);
         props.put("group.id", groupId);
         props.put("key.deserializer", StringDeserializer.class.getName());
-
-        // Configure JsonDeserializer for the value
         props.put("value.deserializer", JsonDeserializer.class.getName());
         props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
         props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, Order.class.getName());
+
         props.put("auto.offset.reset", "earliest");
-        props.put("enable.auto.commit", "false"); // Setting to false for more control over commit
+        props.put("enable.auto.commit", "false");
         return props;
     }
 
@@ -78,7 +77,6 @@ public class OrderStatusUpdateConsumer extends BaseKafkaConsumer<OrderMatchedEve
     @PostConstruct
     public void startListening() {
         log.info("Starting OrderStatusUpdateConsumer for topic: {}", TOPIC);
-        // Pass the fixed topic name and the method reference to the service's handler
         startConsuming(TOPIC, orderStatusUpdateService::handleOrderMatchedEvent);
     }
 }

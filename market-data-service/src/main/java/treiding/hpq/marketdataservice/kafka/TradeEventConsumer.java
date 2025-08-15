@@ -58,14 +58,12 @@ public class TradeEventConsumer extends BaseKafkaConsumer<Trade> {
         props.put("bootstrap.servers", bootstrapServers);
         props.put("group.id", groupId);
         props.put("key.deserializer", StringDeserializer.class.getName());
-
-        // Configure JsonDeserializer for the value (Trade object)
         props.put("value.deserializer", JsonDeserializer.class.getName());
         props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
         props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, Trade.class.getName());
+
         props.put("auto.offset.reset", "earliest");
         props.put("enable.auto.commit", "false");
-
         return props;
     }
 

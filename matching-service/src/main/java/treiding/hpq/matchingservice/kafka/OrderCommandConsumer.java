@@ -18,27 +18,36 @@ public class OrderCommandConsumer extends BaseKafkaConsumer<OrderCommandEvent> {
 
     private static final String ORDER_EVENTS_TOPIC = "order.command";
 
-    // Shared ObjectMapper instance for better performance and correct handling of Java 8 time types
+    // Shared ObjectMapper instance for better performance and Java 8 time type support
     private static final ObjectMapper objectMapper = new ObjectMapper()
             .registerModule(new JavaTimeModule());
 
     /**
-     * Constructs the OrderCommandConsumer with Kafka configuration injected by Spring.
+     * Constructs an OrderCommandConsumer instance.
+     * This consumer subscribes to the "order.command" topic and processes OrderCommandEvent messages.
+     * It is configured to manually commit offsets after each message is successfully processed.
      *
      * @param bootstrapServers Kafka bootstrap servers.
-     * @param groupId Consumer group ID.
+     * @param groupId          Kafka consumer group ID for the order command consumer.
      */
-    public OrderCommandConsumer(@Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
-                                @Value("${spring.kafka.consumer.group-id.order-command}") String groupId) {
-        super(buildConsumerProps(bootstrapServers, groupId), ORDER_EVENTS_TOPIC);
+    public OrderCommandConsumer(
+            @Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
+            @Value("${spring.kafka.consumer.group-id.order-command}") String groupId) {
+        // commitPerMessage = true, commitBatchSize = 1 (ensures message is committed only when successfully processed)
+        super(buildConsumerProps(bootstrapServers, groupId), ORDER_EVENTS_TOPIC, true, 1);
     }
 
     /**
-     * Builds Kafka consumer configuration properties.
+     * Builds the Kafka consumer configuration properties for the OrderCommandConsumer.
+     * This configuration:
+     * - Uses a String key deserializer and a JSON value deserializer.
+     * - Registers trusted packages for deserialization to avoid security issues.
+     * - Disables auto-commit to allow manual offset commit after message processing.
+     * - Starts consuming from the earliest offset if no committed offset exists for the group.
      *
      * @param bootstrapServers Kafka bootstrap servers.
-     * @param groupId Consumer group ID.
-     * @return Kafka consumer properties.
+     * @param groupId          Kafka consumer group ID.
+     * @return Properties object containing Kafka consumer settings.
      */
     private static Properties buildConsumerProps(String bootstrapServers, String groupId) {
         Properties props = new Properties();
@@ -47,38 +56,43 @@ public class OrderCommandConsumer extends BaseKafkaConsumer<OrderCommandEvent> {
         props.put("key.deserializer", StringDeserializer.class.getName());
         props.put("value.deserializer", JsonDeserializer.class.getName());
 
-        // Trusted packages for deserialization – keep specific and avoid wildcards in production
+        // Trusted packages for safe deserialization
         props.put(JsonDeserializer.TRUSTED_PACKAGES,
                 "treiding.hpq.basedomain.kafkaevent,treiding.hpq.basedomain.order");
         props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, OrderCommandEvent.class.getName());
 
-        // Start consuming from latest offset (recommended for real-time processing)
-        props.put("auto.offset.reset", "earliest");
+        // Disable auto-commit to ensure messages are committed only after successful processing
+        props.put("enable.auto.commit", "false");
 
-        // Enable auto offset commit (can be set to false for manual commit if stronger guarantees are needed)
-        props.put("enable.auto.commit", "true");
-        props.put("auto.commit.interval.ms", "5000");
+        // Start from the earliest offset if no committed offset exists
+        props.put("auto.offset.reset", "earliest");
 
         return props;
     }
 
     /**
-     * Creates and configures a KafkaConsumer instance.
+     * Creates and configures a KafkaConsumer instance for OrderCommandEvent.
+     * The consumer uses a custom JsonDeserializer configured with a shared ObjectMapper.
+     * Type headers are disabled to simplify deserialization when only one message type is expected.
+     * Trusted packages are explicitly added to prevent deserialization vulnerabilities.
      *
-     * @param consumerProps Kafka properties.
-     * @param topicName Kafka topic to subscribe to.
-     * @return Configured KafkaConsumer instance.
+     * @param consumerProps Kafka consumer properties.
+     * @param topicName     Kafka topic to subscribe to.
+     * @return A configured KafkaConsumer instance.
      */
     @Override
     protected Consumer<String, OrderCommandEvent> createKafkaConsumer(Properties consumerProps, String topicName) {
         JsonDeserializer<OrderCommandEvent> jsonDeserializer =
                 new JsonDeserializer<>(OrderCommandEvent.class, objectMapper);
 
-        // Disable type headers if the topic contains only a single event type
+        // Disable type headers to avoid requiring __TypeId__ in Kafka headers
         jsonDeserializer.setUseTypeHeaders(false);
 
-        // Explicitly trust the same packages as configured in properties
-        jsonDeserializer.addTrustedPackages("treiding.hpq.basedomain.kafkaevent", "treiding.hpq.basedomain.order");
+        // Add trusted packages for secure deserialization
+        jsonDeserializer.addTrustedPackages(
+                "treiding.hpq.basedomain.kafkaevent",
+                "treiding.hpq.basedomain.order"
+        );
 
         return new KafkaConsumer<>(
                 consumerProps,
@@ -87,3 +101,5 @@ public class OrderCommandConsumer extends BaseKafkaConsumer<OrderCommandEvent> {
         );
     }
 }
+
+

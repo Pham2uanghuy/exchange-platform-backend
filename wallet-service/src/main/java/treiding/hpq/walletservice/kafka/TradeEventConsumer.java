@@ -38,7 +38,7 @@ public class TradeEventConsumer extends BaseKafkaConsumer<Trade> {
             TradeEventProcessor tradeEventProcessor) {
 
         // Pass the built properties and the topic name to the superclass constructor.
-        super(buildConsumerProps(bootstrapServers, groupId), TRADE_EVENTS_TOPIC);
+        super(buildConsumerProps(bootstrapServers, groupId), TRADE_EVENTS_TOPIC, true, 1);
         this.tradeEventProcessor = tradeEventProcessor;
     }
 
@@ -54,15 +54,11 @@ public class TradeEventConsumer extends BaseKafkaConsumer<Trade> {
         props.put("group.id", groupId);
         props.put("key.deserializer", StringDeserializer.class.getName());
         props.put("value.deserializer", JsonDeserializer.class.getName());
-
-        // Configure JsonDeserializer to trust all packages and specify the target class.
         props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
         props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, Trade.class.getName());
 
-        // For critical data, it's often best to handle offsets manually after processing.
         props.put("enable.auto.commit", "false");
         props.put("auto.offset.reset", "earliest");
-
         return props;
     }
 

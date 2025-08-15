@@ -8,11 +8,8 @@
         <outputRelativeToContentRoot value="true" />
         <module name="base-domain" />
         <module name="order-status-service" />
-        <module name="market-data-service" />
-        <module name="matching-service" />
         <module name="order-service" />
-        <module name="user-service" />
-        <module name="wallet-service" />
+        <module name="matching-service" />
       </profile>
     </annotationProcessing>
   </component>
